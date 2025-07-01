@@ -1,0 +1,835 @@
+---
+title: "CS final"
+output: html_document
+date: "2023-11-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      dev="png",
+                      dpi = 300)
+library("tidyverse")
+library(haven)
+library(patchwork)
+library(dplyr)
+library(arm)
+```
+
+## Statistical Case Studies Semester 1 Project 1
+
+## Pisa 2015 and 2018: Comparison of educational attainment between England, Scotland, Wales and Northern Ireland 
+## Data (cut-down version)
+
+Sian Brady s2144034 Katy Reid s2069134
+Both group members worked on producing graphs and models for part one. Katy prepared the data and sorted out missing values for both parts. Sian produced the models for part two. Both members contributed to writing up the report via a shared document.
+  
+### Variable description
+
+* `Region` categorical.	Great Britain: (82611) England, 	(82612) Great Britain: Northern Ireland, (82613) Great Britain: Wales , (82620) Great Britain: Scotland. 
+* `CNTSCHID` school identifier
+* `PV5MATH`,   `PV5READ`, `PV5SCIE`: Continuous. Plausible Value 1 to 10 in Mathematics, Reading and Science respectively. These are the standardised test scores and will be the response variables. Each group will use one of numbers 1 to 10 as their response variables.
+* `MISCED`, `FISCED` Categorical. Mothers and Fathers Education (ISCED). (0) None, 
+(1) ISCED, (2) ISCED 2, (3) ISCED 3B, (3) C, (4) ISCED 3A, ISCED 4, (5)  ISCED 5B, (6) ISCED 5A, 6.
+see https://en.wikipedia.org/wiki/International_Standard_Classification_of_Education
+* `ESCS` Continuous. The PISA index of economic, social and cultural status (ESCS) was created using student reports on parental occupation, the highest level of parental education, and an index of home possessions related to family wealth, home educational resources and possessions related to "classical" culture in the family home. 
+* `ST004D01T` Categorical. Gender, (1) female and (2) male.
+*  `ST019AQ01T` Categorical. (1) Country of test, (2) Other country. Relating to question: In what country were you and your parents born? You.
+* `ST019BQ01T`  Categorical. (1) Country of test, (2) Other country. Relating to question: In what country were you and your parents born? Your mother.
+* `ST019CQ01T` Categorical. (1) Country of test, (2) Other country. Relating to question: In what country were you and your parents born? Your father.
+* `SCHLTYPE` school type derived from sampling information; (1) Private, Independent, (2) Private Government-dependent, (3) Public.
+
+* `SC001Q01TA`  Categorical. Area type. Which of the following definitions best describes the community in which your school is located? (1) A village, hamlet or rural area (fewer than 3 000 people), (2) A small town (3 000 to about 15 000 people), (3) A town (15 000 to about 100 000 people), (4) A city (100 000 to about 1 000 000 people), (5) A large city (with over 1 000 000 people)
+
+* `SC013Q01TA` Catgorical.  Schooltype from questionnaire. (1) A public school (Managed by a public education authority, government agency, or governing board) public/private school (2) A private school (Managed by a non-government org; e.g. a church, trade union, business, or other private institution.)
+* `SC002Q01TA` Number boys. Question: As of <February 1, 2018>, what was the total school enrolment (number of students)? Number of boys.
+* `SC002Q02TA`  Number girls. Question: As of <February 1, 2018>, what was the total school enrolment (number of students)? Number of girls. 
+* `SC048Q03NA`  Percentage <national modal grade for 15-year-olds>: Students from socioeconomically disadvantaged homes.
+  
+
+# Below is a start for you for exploring the data and sorting out factor levels etc.
+  
+```{r}
+load("GB.rda")
+
+summary(GB)
+
+## we see that there are quite a lot of missing values
+
+# define factor levels and change some of the variable names to something sensible
+
+ 
+GB$SCHLTYPE<-factor(GB$SCHLTYPE, levels=c("1","2","3"),labels=c("Private Independent",
+                                                                "Private Government-dependent",
+                                                                "Public"))
+
+GB$Region<-factor(GB$Region, levels=c("82611","82612","82613","82620"),labels=c("E","NI","W","S"))
+
+GB$immig<-factor(GB$ST019AQ01T,levels=c("1","2"),labels=c("nonimmi","immi"))
+GB$immigm<-factor(GB$ST019BQ01T,levels=c("1","2"),labels=c("nonimmi","immi"))
+GB$immigf<-factor(GB$ST019CQ01T,levels=c("1","2"),labels=c("nonimmi","immi"))
+GB$SC001Q01TA<-GB$ST019BQ01<-GB$ST019CQ01T <- NULL
+
+GB$gender <-factor(GB$ST004D01T,levels=c("1","2"),c("female","male"))
+GB$ST004D01T<- NULL
+
+```
+
+## Missing data 
+```{r missing_vals}
+GB5 <- GB[, - c(2:5,7:15,17:25,27:31)]
+GB5 <- GB5[, -c(8,9,13)]
+colnames(GB5)[9] <- ("disadv")
+colnames(GB5)[11] <- ("enrollm")
+colnames(GB5)[12] <- ("enrollf")
+
+
+#Produce graph of missing values
+image(!is.na(GB5), axes = FALSE, col=gray(0:1))
+title(xlab = "Participant Number")
+axis(2,at=(0:16)/16, labels=names(GB5), las = 2)
+axis(1, at=3000 *(0:10)/27975, 3000 *(0:10))
+
+#Display no of missing entries from each column
+knitr::kable(colSums(is.na(GB5)), caption = "Number of missing data points by factor")
+
+#reduce dat to only contain rows with test score data
+#GB5 <- GB5 %>% drop_na(c(PV5MATH, PV5READ, PV5SCIE))
+
+
+GB5 <- GB5 %>% drop_na(c(enrollm, enrollf, disadv, SCHLTYPE, FISCED, MISCED))
+nrow(GB5)-nrow(na.omit(GB5))
+
+#Produce graph of missing values
+image(!is.na(GB5), axes = FALSE, col=gray(0:1))
+title(main = "Missing data", xlab = "Participant number")
+axis(2,at=(0:16)/16, labels=names(GB5), las = 2)
+axis(1, at=3000 *(0:10)/27975, 3000 *(0:10))
+
+GB5 <- drop_na(GB5)
+
+# new column TRUE for single sex schools, FALSE for mixed
+GB5$mixedsex <- factor(GB5$enrollm != 0 & GB5$enrollf != 0)
+```
+
+### Investigating associations and correlations for missing data 
+```{r associations}
+cor(GB5$disadv, GB5$ESCS)
+cor(GB5$enrollm, GB5$ESCS)
+cor(GB5$enrollf, GB5$ESCS)
+
+
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(disadv, year)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(disadv, immig)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(disadv, immigm)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(disadv, immigf)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(disadv, gender)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollm, year)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollm, immig)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollm, immigm)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollm, immigf)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollm, gender))
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollf, year)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollf, immig)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollf, immigm)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollf, immigf)) 
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(enrollf, gender))
+GB5 %>%
+  ggplot() +
+  geom_boxplot(aes(SCHLTYPE, ESCS))
+```
+
+## Plot for executive summary
+
+```{r executive summary plot 1}
+data <- data.frame(data15 = c(588.889, 513.889 ,564.889, 550.998),
+                    data18 = c(581.889, 513.889 ,565.889, 550.998),
+                    Regions = c("E", "NI", "W", "S"))
+
+ggplot(data, aes(Regions, data15)) +
+geom_point() + labs(x='Region', y = "Average score") + ggtitle("2015")+ ylim(510,590)
+ggplot(data, aes(Regions, data18)) +
+geom_point() + labs(x='Region', y = "Average score") + ggtitle("2018") + ylim(510,590)
+```
+## Data exploration
+
+```{r score_by_region, eval = TRUE, echo=FALSE}
+# Explore relationships with nations
+
+GB5 %>%
+  group_by(Region, year) %>%
+  summarise(PV5MATH = mean(PV5MATH), PV5READ = mean(PV5READ), PV5SCIE = mean(PV5SCIE), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(Region, PV5MATH, color="blue")) +
+  geom_point(aes(Region, PV5READ, color="red")) +
+  geom_point(aes(Region, PV5SCIE, color="dark green")) +
+  scale_color_discrete(name='Subject', labels=c("Reading", "Science", "Maths")) +
+  labs(y="Subject Score") +
+  facet_wrap(~ year)
+
+```
+
+```{r score_by_gender, eval = TRUE, echo=FALSE}
+# Average score per subject for each sex
+
+gender_math <- GB5 %>%
+  ggplot() +
+  ylim(0,900) +
+  labs(x="Sex", y="Maths") +
+  geom_boxplot(aes(gender, PV5MATH))
+
+gender_read <- GB5 %>%
+  ggplot() +
+  ylim(0,900) +
+  labs(x="Sex", y="Reading") +
+  geom_boxplot(aes(gender, PV5READ))
+
+gender_sci <- GB5 %>%
+  ggplot() +
+  ylim(0,900) +
+  labs(x="Sex", y="Science") +
+  geom_boxplot(aes(gender, PV5SCIE))
+
+gender_math + gender_read + gender_sci
+
+# set all y scales identical
+```
+
+```{r parent_ed_by_immig}
+
+mother_ed_perc = GB5 %>% 
+  group_by(MISCED, immigm) %>%
+  summarise(count=n()) %>%
+  mutate(perc=count/sum(count)*100)
+
+m_ed_perc <- mother_ed_perc %>% 
+  mutate(immigm == "immi") %>%
+  ggplot(aes(MISCED, perc, fill=immigm)) +
+  geom_bar(stat="identity") +
+    labs(x="ISCED Education Level",
+       y="Percentage",
+       fill="Immigrant Status") +
+  scale_fill_discrete(labels=c("Non-Immigrant", "Immigrant")) +
+  ggtitle("Mother")
+
+father_ed_perc = GB5 %>% 
+  group_by(FISCED, immigf) %>%
+  summarise(count=n()) %>%
+  mutate(perc=count/sum(count)*100)
+
+f_ed_perc <- father_ed_perc %>% 
+  mutate(immigf == "immi") %>%
+  ggplot(aes(FISCED, perc, fill=immigf)) +
+  geom_bar(stat="identity") +
+  labs(x="ISCED Education Level",
+       y="Percentage",
+       fill="Immigrant Status") +
+  scale_fill_discrete(labels=c("Non-Immigrant", "Immigrant")) +
+  ggtitle("Father")
+
+m_ed_perc + f_ed_perc 
+```
+
+```{r score_schltype, eval=TRUE, echo=FALSE}
+# avg subject score private and public
+
+GB5 %>%
+#  drop_na(SCHLTYPE) %>%
+  group_by(SCHLTYPE) %>%
+  summarise(PV5MATH = mean(PV5MATH), PV5READ = mean(PV5READ), PV5SCIE = mean(PV5SCIE), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(SCHLTYPE, PV5MATH, color="blue")) +
+  geom_point(aes(SCHLTYPE, PV5READ, color="red")) +
+  geom_point(aes(SCHLTYPE, PV5SCIE, color="dark green")) +
+  scale_color_discrete(name='Subject', labels=c("Reading", "Science", "Maths")) +
+  labs(x="School Type", y="Subject Score")
+```
+
+```{r score_mixed_vs_singlesex}
+# Scores for single sex vs mixed schools for male and female
+
+GB5 %>%
+  group_by(gender, mixedsex) %>%
+  summarise(PV5MATH = mean(PV5MATH), PV5READ = mean(PV5READ), PV5SCIE = mean(PV5SCIE), .groups="drop") %>%
+  ggplot() +
+  geom_point(aes(mixedsex, PV5MATH, color = "blue")) +
+  geom_point(aes(mixedsex, PV5READ, color = "red")) +
+  geom_point(aes(mixedsex, PV5SCIE, color = "dark green")) +
+  labs(x="School", y="Subject Score") +
+  scale_x_discrete(labels=c("Single Sex", "Mixed")) +
+  scale_color_discrete(name="Subject", labels=c("Reading", "Science", "Maths")) +
+  facet_wrap(~ gender)
+```
+
+
+
+```{r score_disadv}
+#Subject score vs percentage of students from socioeconomically disadvantaged homes in school
+GB5 %>%
+  group_by(disadv, year) %>%
+  summarise(PV5MATH = mean(PV5MATH), PV5READ = mean(PV5READ), PV5SCIE = mean(PV5SCIE), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(disadv, PV5MATH, color="blue")) +
+  geom_point(aes(disadv, PV5READ, color="red")) +
+  geom_point(aes(disadv, PV5SCIE, color="dark green")) +
+  scale_color_discrete(name='Subject', labels=c("Reading", "Science", "Maths")) +
+  labs(y="Subject Score", x ="Student Percentage") +
+  facet_wrap(~ year)
+```
+
+```{r immig_status_by_region}
+#
+mytable = GB5 %>% 
+  group_by(Region, year, immig) %>%
+  summarise(count=n()) %>%
+  mutate(perc=count/sum(count)*100)
+
+mytable %>%
+  ggplot(aes(Region, perc, fill=immig)) +
+  geom_bar(stat = "identity") +
+    labs(x="Region",
+       y="Percentage",
+       fill="Immigrant Status") +
+  scale_x_discrete(labels=c("England", "Northern Ireland", "Wales", "Scotland")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  scale_fill_discrete(labels=c("Non-Immigrant", "Immigrant")) +
+  facet_wrap(~ year)
+
+```
+
+```{r schltype_region}
+GB5%>%
+  group_by(Region, SCHLTYPE) %>%
+  summarise(count=n()) %>%
+  mutate(perc=count/sum(count)*100) %>%
+  ggplot (aes(Region, perc, fill=SCHLTYPE)) +
+  labs(y="Percentage") +
+  scale_x_discrete(labels=c("England", "Northern Ireland", "Wales", "Scotland")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  geom_bar(stat = "identity")
+```
+
+## READ model
+```{r read_interactions}
+with( GB5 , interaction.plot (year , Region ,  PV5READ))
+with( GB5 , interaction.plot (Region , SCHLTYPE ,   PV5READ))
+with( GB5 , interaction.plot (year, gender,  PV5READ))
+```
+
+
+```{r}
+read_1 <- lm(PV5READ ~ . - PV5MATH - PV5SCIE + Region:SCHLTYPE + Region:year + Region:gender, data = GB5)
+```
+
+```{r read anova}
+anova(lm(PV5READ ~ . - PV5MATH - PV5SCIE + Region:SCHLTYPE, data=GB5), lm(PV5READ ~ . - PV5MATH - PV5SCIE, data = GB5))
+anova(lm(PV5READ ~ . - PV5MATH - PV5SCIE + Region:SCHLTYPE + Region:year, data=GB5), lm(PV5READ ~ . - PV5MATH - PV5SCIE+ Region:SCHLTYPE, data = GB5))
+anova(read_1, lm(PV5READ ~ . - PV5MATH - PV5SCIE+ Region:SCHLTYPE+Region:year, data = GB5))
+```
+
+```{r}
+step(read_1)
+```
+
+```{r}
+drop1(read_1, test="F")
+```
+
+```{r}
+drop1(lm(PV5READ ~ CNTSCHID + MISCED + FISCED + ESCS + Region + disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigf + gender + mixedsex + Region:SCHLTYPE + Region:year + Region:gender, data=GB5), test="F")
+```
+
+```{r}
+drop1(lm(PV5READ ~ MISCED + FISCED + ESCS + Region + disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigf + gender + mixedsex + Region:SCHLTYPE + Region:year + Region:gender, data=GB5), test="F")
+```
+
+```{r read_assumptions}
+read_final <- lm(PV5READ ~ MISCED + FISCED + ESCS + Region + disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigf + gender + mixedsex + Region:SCHLTYPE + Region:year + Region:gender, data=GB5)
+plot(read_final)
+```
+
+```{r read_coef}
+coefs <- coef(read_final)
+coeficient_plot <- coefplot(read_final, cex.var= 0.5, cex.pts = 1)
+
+CI<-confint(read_final)
+coef_table <- round(data.frame("Coefficient" = coefs, "Confidence intervals" = CI),3)
+coef_table
+```
+
+## SCIENCE MODEL
+```{r science_interactions}
+with( GB5 , interaction.plot (year , Region ,  PV5SCIE))
+with( GB5 , interaction.plot (Region ,SCHLTYPE ,  PV5SCIE))
+with( GB5 , interaction.plot (year , immig ,  PV5SCIE))
+```
+
+```{r}
+science1 <- lm(PV5SCIE ~ . - PV5READ - PV5MATH + Region:year + SCHLTYPE:Region + immig:Region, data = GB5)
+```
+
+```{r science anova}
+anova(lm(PV5SCIE ~ . - PV5MATH - PV5READ + Region:year, data=GB5), lm(PV5SCIE ~ . - PV5MATH - PV5READ, data = GB5))
+anova(lm(PV5SCIE ~ . - PV5MATH - PV5READ + Region:year + Region:SCHLTYPE, data=GB5), lm(PV5SCIE ~ . - PV5MATH - PV5READ + Region:year, data = GB5))
+anova(science1, lm(PV5SCIE ~ . - PV5MATH - PV5READ + Region:year + Region:SCHLTYPE, data=GB5))
+```
+```{r}
+step(science1)
+```
+
+```{r}
+drop1(lm(PV5SCIE ~ CNTSCHID + MISCED + FISCED + ESCS + Region + 
+    disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigf + 
+    mixedsex + Region:year + Region:SCHLTYPE + Region:immig, 
+    data = GB5), test="F")
+```
+
+```{r}
+drop1(lm(PV5SCIE ~ MISCED + FISCED + ESCS + Region + 
+    disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigf + 
+    mixedsex + Region:year + Region:SCHLTYPE + Region:immig, 
+    data = GB5), test="F")
+```
+
+```{r science_assumptions}
+science_final <- lm(PV5SCIE ~ MISCED + FISCED + ESCS + Region + 
+    disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigf + 
+    mixedsex + Region:year + Region:SCHLTYPE + Region:immig, 
+    data = GB5)
+plot(science1)
+```
+
+```{r science_coef}
+coefs <- coef(science_final)
+coeficient_plot <- coefplot(science_final, cex.var= 0.5, cex.pts = 1)
+
+CI<-confint(science_final)
+coef_table <- round(data.frame("Coefficient" = coefs, "Confidence intervals" = CI),3)
+coef_table
+```
+
+## MATHS MODEL
+```{r maths_interactions}
+with( GB5 , interaction.plot (year , Region ,  PV5MATH))
+with( GB5 , interaction.plot (Region , SCHLTYPE, PV5MATH))
+with( GB5 , interaction.plot (immig , Region ,  PV5MATH))
+```
+
+```{r}
+maths1 <- lm(PV5MATH ~ . - PV5SCIE - PV5READ + year:Region + Region:SCHLTYPE + immig:Region, data=GB5)
+step(maths1)
+```
+
+```{r maths anova}
+anova(lm(PV5MATH ~ . - PV5SCIE - PV5READ + Region:SCHLTYPE,data=GB5), lm(PV5MATH ~ . - PV5SCIE - PV5READ, data=GB5))
+anova(lm(PV5MATH ~ . - PV5SCIE - PV5READ + immig:Region + Region:SCHLTYPE, GB5), lm(PV5MATH ~ . - PV5SCIE - PV5READ + Region:SCHLTYPE,data=GB5))
+```
+
+```{r}
+drop1(lm(PV5MATH ~ CNTSCHID + MISCED + FISCED + ESCS + Region + 
+    disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigm + 
+    gender + mixedsex + Region:SCHLTYPE + Region:immig, data = GB5), test="F")
+```
+
+```{r}
+drop1(lm(PV5MATH ~ MISCED + FISCED + ESCS + Region + 
+    disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigm + 
+    gender + mixedsex + Region:SCHLTYPE + Region:immig, data = GB5), test="F")
+```
+
+```{r maths_coef}
+maths_final <- lm(PV5MATH ~ MISCED + FISCED + ESCS + Region + disadv + SCHLTYPE + enrollm + enrollf + year + immig + immigm + gender + mixedsex + Region:SCHLTYPE + Region:immig, data = GB5)
+coefficient_plot <- coefplot(maths_final, cex.var= 0.5, cex.pts = 1) 
+
+coefs <- coef(maths_final)
+CI<-confint(maths_final)
+coef_table <- round(data.frame("Coefficient" = coefs, "Confidence intervals" = CI),3)
+coef_table
+```
+
+```{r maths_assumptions}
+plot(maths_final)
+```
+
+# Part 2
+## Import data
+```{r}
+load("UK_S_data.rda")
+
+GB_S <- UK_S_data
+
+summary(GB_S)
+
+nrow(GB_S)
+
+```
+
+
+We are investigating whether there is a significant relationship between the age that a child starts primary education and their test score, and whether this differs between France and the UK. 
+
+## Rename variables
+```{r clean data}
+
+# Rename cols
+colnames(GB_S)[5] <- ("start0")
+colnames(GB_S)[6] <- ("start1")
+colnames(GB_S)[7] <- ("parentedu")
+colnames(GB_S)[8] <- ("gender")
+colnames(GB_S)[9] <- ("disadv")
+colnames(GB_S)[10] <- ("community")
+colnames(GB_S)[11] <- ("schltype")
+
+```
+## Rename factor levels
+```{r}
+# Factors
+GB_S$community <- factor(GB_S$community, levels=c("1", "2", "3", "4", "5"), labels=c('Village', 'Small Town', 'Town', 'City', 'Large City'))
+GB_S$schltype <- factor(GB_S$schltype, levels=c("1", "2"), labels=c("Public", "Private"))
+GB_S$start0 <- factor(GB_S$start0, levels=c("1", "2", "3", "4", "5", "6", "7", "8"), labels = c("1 year or younger", "2 years", "3 years", "4 years", "5 years", "6 years or older", "I did not attend [ISCED 0]", "I do not remember"))
+GB_S$start1 <- factor(GB_S$start1, levels=c("1", "2", "3", "4", "5", "6", "7"), labels = c("3 or younger", "4", "5", "6", "7", "8", "9 or older"))
+```
+
+
+## Missing data
+
+```{r 3_missing}
+#Produce graph of missing values
+image(!is.na(GB_S), axes = FALSE, col=gray(0:1))
+title(xlab = "Participant Number")
+axis(2,at=(0:12)/12, labels=names(GB_S), las = 2)
+axis(1, at=7000 *(0:12)/40391, 8000 *(0:12))
+
+#Display no of missing entries from each column
+knitr::kable(colSums(is.na(GB_S)), caption = "Number of missing data points by factor")
+
+# Remove start1 NA values, as this is our response
+GB_S <- GB_S %>% drop_na(start1)
+
+#Produce graph of missing values
+image(!is.na(GB_S[]), axes = FALSE, col=gray(0:1))
+title(xlab = "Student")
+axis(2,at=(0:12)/12, labels=names(GB_S), las = 2)
+axis(1, at=3000 *(0:12)/36912, 3000 *(0:12))
+
+knitr::kable(colSums(is.na(GB_S)), caption = "Number of missing data points by factor")
+
+
+GB_S <- GB_S %>% drop_na(c(disadv, schltype, community))
+nrow(GB_S)
+
+#Produce graph of missing values
+image(!is.na(GB_S), axes = FALSE, col=gray(0:1))
+title(xlab = "Student")
+axis(2,at=(0:12)/12, labels=names(GB_S), las = 2)
+axis(1, at=7000 *(0:12)/40391, 8000 *(0:12))
+
+knitr::kable(colSums(is.na(GB_S)), caption = "Number of missing data points by factor")
+
+
+nrow(GB_S)-nrow(na.omit(GB_S))
+
+# Remove all NA
+GB_S <- drop_na(GB_S)
+```
+
+### Investigation asscoiations for missing data
+```{r}
+GB_S %>%
+  ggplot() +
+  geom_boxplot(aes(community, ESCS))
+GB_S %>%
+  ggplot() +
+  geom_boxplot(aes(schltype, ESCS))
+GB_S %>%
+  ggplot() +
+  geom_boxplot(aes(community, disadv))
+GB_S %>%
+  ggplot() +
+  geom_boxplot(aes(schltype, disadv))
+
+GB_S %>%
+  ggplot() +
+  geom_point(aes(ESCS, disadv))
+
+ cor(GB_S$ESCS, GB_S$disadv)
+```
+
+## Executive summary plot
+```{r Exec summary plot}
+GB_S %>%
+  group_by(CNT, start1) %>%
+  summarise(PV5MATH = mean(PV5MATH), PV5READ = mean(PV5READ), PV5SCIE = mean(PV5SCIE), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(start1, rowMeans(cbind(PV5MATH,PV5READ, PV5SCIE)))) +
+  labs(y="Average Score", x ="Primary education start age") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  facet_wrap(~ CNT)
+```
+
+## Data exploration 
+
+```{r 3_country}
+# Explore relationships with countries
+
+GB_S %>%
+  group_by(CNT, year) %>%
+  summarise(PV5MATH = mean(PV5MATH), PV5READ = mean(PV5READ), PV5SCIE = mean(PV5SCIE), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(CNT, PV5MATH, color="blue")) +
+  geom_point(aes(CNT, PV5READ, color="red")) +
+  geom_point(aes(CNT, PV5SCIE, color="dark green")) +
+  scale_color_discrete(name='Subject', labels=c("Reading", "Science", "Maths")) +
+  scale_x_discrete(labels=c("France", "Great Britain")) +
+  labs(x="Country", y="Subject Score") +
+  facet_wrap(~ year)
+```
+```{r 3_sex}
+# Average score per subject for each sex
+GB_S$gender <-factor(GB_S$gender,levels=c("1","2"), labels=c("Female","Male"))
+
+cnt_math <- GB_S %>%
+  ggplot() +
+  ylim(0,900) +
+  labs(x="Sex", y="Maths") +
+  geom_boxplot(aes(gender, PV5MATH))
+
+cnt_read <- GB_S %>%
+  ggplot() +
+  ylim(0,900) +
+  labs(x="Sex", y="Reading") +
+  geom_boxplot(aes(gender, PV5READ))
+
+cnt_scie <- GB_S %>%
+  ggplot() +
+  ylim(0,900) +
+  labs(x="Sex", y="Science") +
+  geom_boxplot(aes(gender, PV5SCIE))
+
+cnt_math + cnt_read + cnt_scie
+```
+
+```{r 3_disadv}
+#Subject score vs percentage of students from socioeconomically disadvantaged homes in school
+
+GB_S %>%
+  group_by(CNT, disadv) %>%
+  summarise(PV5MATH = mean(PV5MATH), PV5READ = mean(PV5READ), PV5SCIE = mean(PV5SCIE), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(disadv, PV5MATH, color="blue")) +
+  geom_point(aes(disadv, PV5READ, color="red")) +
+  geom_point(aes(disadv, PV5SCIE, color="dark green")) +
+  scale_color_discrete(name='Subject', labels=c("Reading", "Science", "Maths")) +
+  labs(y="Subject Score", x ="Student Percentage") +
+  facet_wrap(~ CNT)
+```
+
+```{r 3_start}
+# Percentage comparison age when starting ISCED level 0/1, by country
+
+GB_S %>%
+  group_by(CNT, start0) %>%
+  summarise(count=n()) %>%
+  mutate(perc=count/sum(count)*100) %>%
+  ggplot(aes(start0, perc)) +
+  geom_bar(stat="identity") +
+  labs(x="Age when starting ISCED level 0",
+       y="Percentage") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    ylim(0, 70) +
+  facet_wrap(~ CNT)
+
+GB_S %>%
+  group_by(CNT, start1) %>%
+  summarise(count=n()) %>%
+  mutate(perc=count/sum(count)*100) %>%
+  ggplot(aes(start1, perc)) +
+  geom_bar(stat="identity") +
+  labs(x="Age when starting ISCED level 1",
+       y="Percentage") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    ylim(0, 70) +
+  facet_wrap(~ CNT)
+```
+
+```{r 3_start_score}
+#Average age at starting level 1 against subject score, by subject
+
+GB_S %>%
+  group_by(CNT, start1) %>%
+  summarise(PV5MATH = mean(PV5MATH), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(start1, PV5MATH)) +
+  labs(y="Average Score") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  ggtitle("Maths") +
+  facet_wrap(~ CNT)
+
+GB_S %>%
+  group_by(CNT, start1) %>%
+  summarise(PV5READ = mean(PV5READ), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(start1, PV5READ)) +
+  labs(y="Average Score") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  ggtitle("Reading") +
+  facet_wrap(~ CNT)
+
+GB_S %>%
+  group_by(CNT, start1) %>%
+  summarise(PV5SCIE = mean(PV5SCIE), .groups = "drop") %>%
+  ggplot() +
+  geom_point(aes(start1, PV5SCIE)) +
+  labs(y="Average Score") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  ggtitle("Science") +
+  facet_wrap(~ CNT)
+```
+
+```{r 3_start_escs}
+# Boxplot of ESCS for each age at starting level 1
+GB_S %>%
+  ggplot() +
+  geom_boxplot(aes(ESCS, start1))
+```
+
+## MATHS MODEL
+```{r 3_maths_interaction}
+with( GB_S , interaction.plot (start1 , CNT ,  PV5MATH)) 
+```
+
+
+```{r 3_maths_coefficients}
+# Fit first linear model
+math1 <- lm(PV5MATH ~ . - PV5READ - PV5SCIE + start1:CNT, data=GB_S)
+#summary(math1)
+```
+
+```{r anova_maths}
+anova(lm(PV5MATH ~ . - PV5READ - PV5SCIE, data=GB_S), math1)
+```
+
+```{r}
+step(math1, trace=0)
+```
+
+```{r}
+drop1(math1, test = "F")
+```
+
+```{r 3_maths_assumptions}
+plot(math1)
+```
+
+```{r 3_maths_coefCI}
+coefs <- coef(math1)
+CI<-confint(math1)
+coef_table <- round(data.frame("Coefficient" = coefs, "Confidence intervals" = CI),3)
+knitr::kable(coef_table)
+```
+
+# READ MODEL
+```{r 3_read_interactions}
+with( GB_S , interaction.plot (start1 , CNT ,  PV5READ)) 
+```
+
+
+```{r}
+# Fit first linear model
+read1 <- lm(PV5READ ~ . - PV5MATH - PV5SCIE + start1:CNT, data=GB_S)
+
+summary(read1)
+```
+
+```{r }
+anova(read1, lm(PV5READ ~ . - PV5MATH - PV5SCIE, data=GB_S))
+```
+
+```{r}
+step(read1, trace = 0)
+```
+
+```{r}
+drop1(read1, test = "F")
+```
+
+```{r 3_read_assumptions}
+plot(read1)
+```
+
+```{r 3_read_coefficients}
+coefficient_plot <- coefplot(read1, cex.var= 0.5, cex.pts = 1) 
+```
+
+```{r 3_read_coefCI}
+coefs <- coef(read1)
+CI<-confint(read1)
+coef_table <- round(data.frame("Coefficient" = coefs, "Confidence intervals" = CI),3)
+knitr::kable(coef_table)
+```
+
+## SCIENCE MODEL
+
+```{r 3_science_interaction}
+with( GB_S , interaction.plot (start1 , CNT, PV5SCIE))
+```
+
+```{r science model}
+# Fit first linear model
+science1 <- lm(PV5SCIE ~ . - PV5MATH - PV5READ + start1:CNT, data=GB_S)
+```
+
+```{r anova_science}
+anova(science1, lm(PV5SCIE ~ . - PV5MATH - PV5READ, data=GB_S))
+```
+
+```{r}
+step(science1)
+```
+
+```{r}
+drop1(science1, test  = "F")
+```
+
+```{r 3_science_assumptions}
+plot(science1)
+```
+
+```{r 3_science_coefficients}
+coeficient_plot <- coefplot(science1, cex.var= 0.5, cex.pts = 1) 
+```
+
+```{r 3_science_coefCI}
+coefs <- coef(science1)
+CI<-confint(science1)
+coef_table <- round(data.frame("Coefficient" = coefs, "Confidence intervals" = CI),3)
+coef_table
+```
